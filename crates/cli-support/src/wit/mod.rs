@@ -51,6 +51,12 @@ struct Context<'a> {
     /// pass populates `generic_import_bindings`, which the manufacture step
     /// then joins against by `shim`).
     pending_generic_imports: HashMap<(String, Descriptor), Vec<FunctionId>>,
+    /// Human-meaningful name to blame in binding-failure diagnostics, for the
+    /// imports manufactured by `bind_generic_imports`. Those are named
+    /// `__wbindgen_generic_N` after a sort index that means nothing to a user, so
+    /// the name to actually report is recorded here as they are created rather
+    /// than recovered by parsing it back out of the walrus function name.
+    generic_import_display_names: HashMap<ImportId, String>,
 }
 
 /// Owned JS-binding metadata for a generic import, captured from its decoded
@@ -112,6 +118,7 @@ pub fn process(
         export_adapter_sigs: Default::default(),
         generic_import_bindings: Default::default(),
         pending_generic_imports: Default::default(),
+        generic_import_display_names: Default::default(),
     };
     cx.init()?;
 
@@ -353,6 +360,18 @@ impl<'a> Context<'a> {
                 self.module
                     .add_import_func(PLACEHOLDER_MODULE, &import_name, ty);
             self.module.funcs.get_mut(import_func_id).name = Some(sig_comment.clone());
+
+            // Blame something meaningful if this import fails to bind: the shim
+            // key for a generic import, or the cast's signature for a cast (which
+            // has no user-facing name of its own).
+            self.generic_import_display_names.insert(
+                import_id,
+                if shim.is_empty() {
+                    format!("cast {sig_comment}")
+                } else {
+                    shim.clone()
+                },
+            );
 
             if shim.is_empty() {
                 // Cast: identity adapter, no AST metadata required.
@@ -1758,22 +1777,14 @@ impl<'a> Context<'a> {
         let memory64 = self.memory64();
         self.normalize_memory64_signature(&mut signature, core_id);
 
-        // Name this import in any binding failure below. `__wbindgen_generic_N`
-        // is a sort index assigned by `bind_generic_imports` and means nothing to
-        // a user, but those functions carry the originating shim key (and
-        // signature) as their walrus name, so prefer that.
-        let display_name = if import_name.starts_with("__wbindgen_generic_") {
-            self.module
-                .funcs
-                .get(core_id)
-                .name
-                .as_deref()
-                .and_then(|n| n.split(": ").next())
-                .unwrap_or(&import_name)
-                .to_string()
-        } else {
-            import_name.clone()
-        };
+        // Name this import in any binding failure below. Imports manufactured by
+        // `bind_generic_imports` are named after a sort index that means nothing
+        // to a user, so use the name recorded for them there.
+        let display_name = self
+            .generic_import_display_names
+            .get(&import_id)
+            .cloned()
+            .unwrap_or_else(|| import_name.clone());
 
         // Process the returned type first to see if it needs an out-pointer. This
         // happens if the results of the incoming arguments translated to Wasm take
@@ -2404,6 +2415,7 @@ mod tests {
             export_adapter_sigs: Default::default(),
             generic_import_bindings: Default::default(),
             pending_generic_imports: Default::default(),
+            generic_import_display_names: Default::default(),
         };
         cx.discover_main().unwrap();
         cx.start_found

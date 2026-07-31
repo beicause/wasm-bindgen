@@ -1,9 +1,3 @@
-// This is the only `generic_per_mono` ui-test whose codegen succeeds, so it is
-// the only one that expands the shim's
-// `#[cfg_attr(wasm_bindgen_unstable_test_coverage, ...)]`. That cfg is not
-// declared for the trybuild crate; allow it so the snapshot stays stable.
-#![allow(unexpected_cfgs)]
-
 use wasm_bindgen::prelude::*;
 
 // Trait bounds declared on a per-monomorphisation generic import

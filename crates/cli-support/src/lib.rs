@@ -7,67 +7,67 @@ use std::path::{Path, PathBuf};
 use std::str;
 use walrus::Module;
 
-pub const PLACEHOLDER_MODULE: &str = "__wbindgen_placeholder__";
+pub(crate) const PLACEHOLDER_MODULE: &str = "__wbindgen_placeholder__";
 
-pub mod decode;
-pub mod descriptor;
-pub mod descriptors;
-pub mod externref;
-pub mod interpreter;
-pub mod intrinsic;
-pub mod js;
-pub mod multivalue;
-pub mod suggest;
-pub mod transforms;
+mod decode;
+mod descriptor;
+mod descriptors;
+mod externref;
+mod interpreter;
+mod intrinsic;
+mod js;
+mod multivalue;
+mod suggest;
+mod transforms;
 pub mod wasm2es6js;
-pub mod wasm_conventions;
-pub mod wit;
+mod wasm_conventions;
+mod wit;
 
 pub struct Bindgen {
-    pub input: Input,
-    pub out_name: Option<String>,
-    pub mode: OutputMode,
-    pub debug: bool,
-    pub typescript: bool,
-    pub omit_imports: bool,
-    pub demangle: bool,
-    pub keep_lld_exports: bool,
-    pub keep_debug: bool,
-    pub remove_name_section: bool,
-    pub remove_producers_section: bool,
-    pub omit_default_module_path: bool,
-    pub emit_start: bool,
-    pub externref: bool,
-    pub multi_value: bool,
-    pub encode_into: EncodeInto,
-    pub split_linked_modules: bool,
-    pub generate_reset_state: bool,
-    pub force_enable_abort_handler: bool,
+    input: Input,
+    out_name: Option<String>,
+    mode: OutputMode,
+    debug: bool,
+    typescript: bool,
+    omit_imports: bool,
+    demangle: bool,
+    keep_lld_exports: bool,
+    keep_debug: bool,
+    remove_name_section: bool,
+    remove_producers_section: bool,
+    omit_default_module_path: bool,
+    emit_start: bool,
+    externref: bool,
+    multi_value: bool,
+    encode_into: EncodeInto,
+    split_linked_modules: bool,
+    generate_reset_state: bool,
+    force_enable_abort_handler: bool,
 }
 
 pub struct Output {
-    pub module: walrus::Module,
-    pub stem: String,
-    pub generated: Generated,
+    module: walrus::Module,
+    stem: String,
+    generated: Generated,
 }
 
-pub struct Generated {
-    pub mode: OutputMode,
-    pub js: String,
-    pub ts: String,
-    pub start: Option<String>,
-    pub snippets: BTreeMap<String, Vec<String>>,
-    pub local_modules: HashMap<String, String>,
-    pub npm_dependencies: HashMap<String, (PathBuf, String)>,
-    pub typescript: bool,
+struct Generated {
+    mode: OutputMode,
+    js: String,
+    ts: String,
+    start: Option<String>,
+    snippets: BTreeMap<String, Vec<String>>,
+    local_modules: HashMap<String, String>,
+    npm_dependencies: HashMap<String, (PathBuf, String)>,
+    typescript: bool,
     /// For `OutputMode::Emscripten` only: the contents of a sidecar file
     /// emcc loads via `--extern-pre-js`, containing ESM `import` statements
     /// that must live at module top-level. Empty for other modes.
-    pub emscripten_extern_pre_js: String,
+    emscripten_extern_pre_js: String,
 }
 
 #[derive(Clone)]
-pub enum OutputMode {
+enum OutputMode {
     Bundler { browser_only: bool },
     Web,
     NoModules { global: String },
@@ -77,7 +77,7 @@ pub enum OutputMode {
     Emscripten,
 }
 
-pub enum Input {
+enum Input {
     Path(PathBuf),
     Module(Module, String),
     Bytes(Vec<u8>, String),
@@ -531,7 +531,7 @@ impl Bindgen {
         })
     }
 
-    pub fn module_from_bytes(&self, bytes: &[u8]) -> Result<Module, Error> {
+    fn module_from_bytes(&self, bytes: &[u8]) -> Result<Module, Error> {
         walrus::ModuleConfig::new()
             // Skip validation of the module as LLVM's output is
             // generally already well-formed and so we won't gain much
@@ -560,7 +560,7 @@ impl Bindgen {
     }
 }
 
-pub fn reset_indentation(s: &str) -> String {
+fn reset_indentation(s: &str) -> String {
     let mut indent: u32 = 0;
     let mut dst = String::new();
 
@@ -613,7 +613,7 @@ pub fn reset_indentation(s: &str) -> String {
 /// duplicate symbols can appear. We handle this case manually.
 ///
 /// issue: <https://github.com/wasm-bindgen/wasm-bindgen/issues/4820>
-pub fn demangle(module: &mut Module) {
+fn demangle(module: &mut Module) {
     let (lower, upper) = module.funcs.iter().size_hint();
     let mut counter: HashMap<String, i32> = HashMap::with_capacity(upper.unwrap_or(lower));
 
@@ -641,7 +641,7 @@ pub fn demangle(module: &mut Module) {
 }
 
 impl OutputMode {
-    pub fn uses_es_modules(&self) -> bool {
+    fn uses_es_modules(&self) -> bool {
         matches!(
             self,
             OutputMode::Bundler { .. }
@@ -652,19 +652,19 @@ impl OutputMode {
         )
     }
 
-    pub fn nodejs(&self) -> bool {
+    fn nodejs(&self) -> bool {
         matches!(self, OutputMode::Node { .. })
     }
 
-    pub fn no_modules(&self) -> bool {
+    fn no_modules(&self) -> bool {
         matches!(self, OutputMode::NoModules { .. })
     }
 
-    pub fn bundler(&self) -> bool {
+    fn bundler(&self) -> bool {
         matches!(self, OutputMode::Bundler { .. })
     }
 
-    pub fn emscripten(&self) -> bool {
+    fn emscripten(&self) -> bool {
         matches!(self, OutputMode::Emscripten)
     }
 }
@@ -672,7 +672,7 @@ impl OutputMode {
 /// Remove a number of internal exports that are synthesized by Rust's linker,
 /// LLD. These exports aren't typically ever needed and just add extra space to
 /// the binary.
-pub fn unexported_unused_lld_things(module: &mut Module) {
+fn unexported_unused_lld_things(module: &mut Module) {
     let mut to_remove = Vec::new();
     for export in module.exports.iter() {
         match export.name.as_str() {
@@ -842,7 +842,7 @@ impl Output {
 /// When exception handling instructions are available in the module, this generates
 /// Wasm wrapper functions that catch JavaScript exceptions using `WebAssembly.JSTag`
 /// instead of relying on JS `handleError` wrappers.
-pub fn generate_wasm_catch_wrappers(
+fn generate_wasm_catch_wrappers(
     module: &mut Module,
     enable_abort_handler: bool,
 ) -> Result<(), Error> {
@@ -883,7 +883,7 @@ pub fn generate_wasm_catch_wrappers(
     Ok(())
 }
 
-pub fn gc_module_and_adapters(module: &mut Module) {
+fn gc_module_and_adapters(module: &mut Module) {
     loop {
         // Fist up, cleanup the native Wasm module. Note that roots can come
         // from custom sections, namely our Wasm interface types custom section

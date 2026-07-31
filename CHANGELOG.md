@@ -5,9 +5,45 @@
 
 ### Added
 
+* Added `#[wasm_bindgen(generic_per_mono)]` for imported functions, which binds a
+  generic import once per monomorphisation instead of erasing its type
+  parameters to `JsValue`. Each instantiation gets its own descriptor, so
+  arguments and return values are marshalled at their concrete types (a `u32`
+  crosses as a number, a `String` as a string) rather than being boxed. Trait
+  bounds, `where` predicates (including higher-ranked ones), associated-type
+  projections, `async`, `catch`, and `slice_to_array` are all supported; see
+  [the guide](https://wasm-bindgen.github.io/wasm-bindgen/reference/attributes/on-js-imports/generic_per_mono.html)
+  for the supported surface and the shapes that are rejected.
+
+* Added the `ScalarIntoWasmAbi` marker trait and, with it, a blanket
+  `impl<T: ScalarIntoWasmAbi> IntoWasmAbi for &T`. `&T` arguments where `T` is a
+  scalar (the integer types, `f32`/`f64`, `bool`, `char`) are now accepted in
+  imported function signatures; previously only `&JsValue` and the concrete
+  slice/string references were. This is additive — no signature that compiled
+  before is affected. Note that the blanket impl can conflict with a
+  hand-written `impl IntoWasmAbi for &MyType` in a downstream crate.
+
 ### Changed
 
+* Casts are now bound through the same pipeline as `generic_per_mono` imports,
+  which both discover their monomorphisations through one shared descriptor
+  marker. Two internal names changed as a result: the marker import
+  `__wbindgen_describe_cast` is now `__wbindgen_describe_generic_import`, and the
+  cast shims emitted into the JS glue are named `__wbindgen_generic_N` instead of
+  `__wbindgen_cast_N`. Both are internal details of the generated output, but the
+  latter is visible in the emitted JS and will change the output of anyone
+  matching on those names.
+
 ### Fixed
+
+* `async` imports now describe their return value as the `Promise` handle that
+  actually crosses the ABI, rather than as the type the promise resolves to. The
+  resolved value is converted separately, on the Rust side, when the returned
+  `JsFuture` is awaited. Previously the descriptor named the resolved type, so
+  the CLI marshalled the promise handle as if it were that type and silently
+  produced garbage for any resolved type that is not itself handle-shaped —
+  `async fn f() -> u32;` being the simplest case. Imports resolving to a JS
+  handle type were unaffected, since the two marshal identically.
 
 * Fixed threaded Wasm memory layout to reserve wasm-bindgen's internal thread
   page after the module's original initial memory instead of at `__heap_base`,

@@ -314,11 +314,12 @@ impl InstructionBuilder<'_, '_> {
                 ),
             },
 
-            // `&T` where `T` is a copyable value type. The Rust side passes
-            // the value by copy (`impl<T: Copy + IntoWasmAbi> IntoWasmAbi for
-            // &T`), so the wire is identical to passing `T` by value — JS just
-            // receives the primitive. Only the shared-ref form participates;
-            // `&mut primitive` has no such ABI.
+            // `&T` where `T` is a scalar. The Rust side passes the value by copy
+            // (`impl<T: ScalarIntoWasmAbi> IntoWasmAbi for &T`), so the wire is
+            // identical to passing `T` by value — JS just receives the primitive.
+            // Only the shared-ref form participates; `&mut primitive` has no such
+            // ABI. Keep this arm list in lockstep with the set of types
+            // `ScalarIntoWasmAbi` is implemented for.
             Descriptor::I8
             | Descriptor::U8
             | Descriptor::I16

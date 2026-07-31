@@ -2806,10 +2806,8 @@ impl ast::ImportFunction {
                     // promise as if it were a `T`, which silently produces
                     // garbage for any `T` that is not itself handle-shaped.
                     //
-                    // (The normal import path still describes the inner type at
-                    // `DescribeImport`, and so still mis-marshals e.g.
-                    // `async fn f() -> u32`. Fixing that is a separate,
-                    // snapshot-churning change.)
+                    // `DescribeImport` does the same for the non-generic import
+                    // path; keep the two in sync.
                     quote! {
                         <#wasm_bindgen::JsValue as #wasm_bindgen::describe::WasmDescribe>::describe();
                     }
@@ -2929,8 +2927,14 @@ impl ast::ImportFunction {
             #(#attrs)*
             #doc
             #vis #maybe_async #maybe_unsafe fn #rust_name <#generic_params> (#me #(#wrapper_args),*) #ret #where_clause {
+                // Route through `__wbindgen_coverage!` rather than writing
+                // `#[cfg_attr(wasm_bindgen_unstable_test_coverage, ..)]` here:
+                // that cfg is only declared inside the `wasm-bindgen` crate, so
+                // naming it in generated code warns (`unexpected_cfgs`) in every
+                // downstream crate, and the bare `#[coverage(off)]` it expands to
+                // needs the `allow_internal_unstable` that the macro carries.
+                #wasm_bindgen::__wbindgen_coverage! {
                 #[inline(never)]
-                #[cfg_attr(wasm_bindgen_unstable_test_coverage, coverage(off))]
                 unsafe extern "C" fn breaks_if_inlined<#(#shim_generic_params),*>(
                     #(#shim_abi_args),*
                 ) -> #shim_ret_ty
@@ -2949,6 +2953,7 @@ impl ast::ImportFunction {
                     #describe_ret
                     #describe_ret
                     #shim_ret_expr
+                }
                 }
 
                 unsafe {
@@ -3367,6 +3372,11 @@ impl TryToTokens for DescribeImport<'_> {
             // An `async` import returns a `Promise` across the ABI regardless of
             // what it resolves to, so the descriptor must say externref. The
             // resolved value is converted separately, inside `JsFuture<T>`.
+            // Without this, cli-support marshals the promise handle as if it were
+            // the resolved `T`, producing garbage for any `T` that is not itself
+            // handle-shaped (e.g. `async fn f() -> u32`). The `generic_per_mono`
+            // path does the same in `ImportFunction::try_to_tokens_generic`; keep
+            // the two in sync.
             Some(_) if f.function.r#async => quote! { <JsValue as WasmDescribe>::describe(); },
             Some(ref t) => {
                 let t = generics::generic_to_concrete(
